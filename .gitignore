@@ -1,194 +1,230 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional, List
+import os
 
-# C extensions
-*.so
+# Data Models
+@dataclass(frozen=True)
+class Card:
+    number: str
+    password: str
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+@dataclass(frozen=True)
+class TransactionInfo:
+    id: int
+    timestamp: datetime
+    type: str
+    amount: Optional[float] = None
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+class Account:
+    def __init__(self, account_number: str):
+        self.account_number = account_number
+        self._balance: float = 0.0
+        self._card: Optional[Card] = None
+        self._transactions: List[TransactionInfo] = []
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
+    @property
+    def balance(self) -> float:
+        return self._balance
 
-# Translations
-*.mo
-*.pot
+    def link_card(self, card: Card) -> None:
+        self._card = card
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+    def has_card(self, card_number: str, password: str) -> bool:
+        return self._card and self._card.number == card_number and self._card.password == password
 
-# Flask stuff:
-instance/
-.webassets-cache
+    def add_transaction(self, transaction: TransactionInfo) -> None:
+        self._transactions.append(transaction)
 
-# Scrapy stuff:
-.scrapy
+    def get_transactions(self) -> List[TransactionInfo]:
+        return self._transactions.copy()
 
-# Sphinx documentation
-docs/_build/
+class Customer:
+    def __init__(self, name: str, address: str, phone: str, email: str):
+        self.name = name
+        self.address = address
+        self.phone = phone
+        self.email = email
+        self._accounts: List[Account] = []
 
-# PyBuilder
-.pybuilder/
-target/
+    def add_account(self, account: Account) -> None:
+        self._accounts.append(account)
 
-# Jupyter Notebook
-.ipynb_checkpoints
+    def find_account(self, card_number: str, password: str) -> Optional[Account]:
+        return next((account for account in self._accounts 
+                    if account.has_card(card_number, password)), None)
 
-# IPython
-profile_default/
-ipython_config.py
+class Bank:
+    def __init__(self, name: str, swift_code: str):
+        self.name = name
+        self.swift_code = swift_code
+        self._customers: List[Customer] = []
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+    def add_customer(self, customer: Customer) -> None:
+        self._customers.append(customer)
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+    def authenticate(self, card_number: str, password: str) -> Optional[Account]:
+        return next((account for customer in self._customers 
+                    for account in [customer.find_account(card_number, password)] 
+                    if account), None)
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+# Interfaces :
+class Display:
+    def show(self, message: str) -> None:
+        print(message)
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
+    def clear(self) -> None:
+        os.system('cls' if os.name == 'nt' else 'clear')
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/latest/usage/project/#working-with-version-control
-.pdm.toml
-.pdm-python
-.pdm-build/
+class Input:
+    def read(self, prompt: str) -> str:
+        return input(prompt)
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+# Transactions :
+class Transaction(ABC):
+    _counter: int = 0
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
+    def __init__(self, type: str, amount: Optional[float] = None):
+        self.info = TransactionInfo(
+            id=Transaction._counter,
+            timestamp=datetime.now(),
+            type=type,
+            amount=amount
+        )
+        Transaction._counter += 1
 
-# SageMath parsed files
-*.sage.py
+    @abstractmethod
+    def execute(self, account: Account) -> bool:
+        pass
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+class Withdraw(Transaction):
+    def __init__(self, amount: float):
+        super().__init__("Withdraw", amount)
 
-# Spyder project settings
-.spyderproject
-.spyproject
+    def execute(self, account: Account) -> bool:
+        if self.info.amount > 0 and account.balance >= self.info.amount:
+            account._balance -= self.info.amount
+            account.add_transaction(self.info)
+            return True
+        return False
 
-# Rope project settings
-.ropeproject
+class Deposit(Transaction):
+    def __init__(self, amount: float):
+        super().__init__("Deposit", amount)
 
-# mkdocs documentation
-/site
+    def execute(self, account: Account) -> bool:
+        if self.info.amount > 0:
+            account._balance += self.info.amount
+            account.add_transaction(self.info)
+            return True
+        return False
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+class Balance(Transaction):
+    def __init__(self):
+        super().__init__("Balance")
 
-# Pyre type checker
-.pyre/
+    def execute(self, account: Account) -> bool:
+        account.add_transaction(self.info)
+        return True
 
-# pytype static type analyzer
-.pytype/
+# ATM Controller :
+class ATMController:
+    OPTIONS = {
+        "1": ("Withdraw", lambda input, display: Withdraw(float(input.read("\nEnter amount to withdraw: ")))),
+        "2": ("Deposit", lambda input, display: Deposit(float(input.read("\nEnter amount to deposit: ")))),
+        "3": ("Balance", lambda input, display: Balance()),
+        "4": ("View Transactions", None),
+        "5": ("Exit", None)
+    }
 
-# Cython debug symbols
-cython_debug/
+    def __init__(self, bank: Bank, location: str, display: Display, input: Input):
+        self.bank = bank
+        self.location = location
+        self.display = display
+        self.input = input
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+    def run(self) -> None:
+        self.display.clear()
+        self.display.show("Welcome to MyBank ATM\nPlease enter your card details to proceed.")
+        card_number = self.input.read("Card Number: ")
+        password = self.input.read("Password: ")
+        account = self.bank.authenticate(card_number, password)
 
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
+        if account:
+            self.display.show(f"\nAccess granted. Current balance: {account.balance:.2f} EGP")
+            self.input.read("\nPress Enter to continue...")
+            self._run_menu(account)
+        else:
+            self.display.show("Authentication failed. Please try again.")
 
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the enitre vscode folder
-# .vscode/
+    def _run_menu(self, account: Account) -> None:
+        while True:
+            self.display.clear()
+            self.display.show(self._format_menu())
+            choice = self.input.read("\nChoose an option: ")
 
-# Ruff stuff:
-.ruff_cache/
+            if choice == "5":
+                self.display.show("\nEjecting card...\nGoodbye!")
+                break
 
-# PyPI configuration file
-.pypirc
+            self._process_choice(choice, account)
+            self.input.read("\nPress Enter to return to the main menu...")
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
+    def _format_menu(self) -> str:
+        return (
+            "\nMain Menu:\n"
+            "1. Withdraw Money\n"
+            "2. Deposit Money\n"
+            "3. Check Balance\n"
+            "4. View Transactions\n"
+            "5. Exit"
+        )
+
+    def _process_choice(self, choice: str, account: Account) -> None:
+        try:
+            if choice not in self.OPTIONS:
+                self.display.show("Invalid choice. Please select a valid option.")
+                return
+
+            if choice == "4":
+                self._show_transactions(account)
+                return
+
+            _, transaction_factory = self.OPTIONS[choice]
+            if transaction_factory:
+                transaction = transaction_factory(self.input, self.display)
+                success = transaction.execute(account)
+                self._show_result(transaction, account, success)
+
+        except ValueError:
+            self.display.show("Invalid input. Please enter a valid numeric amount.")
+
+    def _show_transactions(self, account: Account) -> None:
+        self.display.clear()
+        self.display.show("Transaction History:\n")
+        for t in account.get_transactions():
+            amount = f"{t.amount:.2f} EGP" if t.amount else "N/A"
+            time_str = t.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            self.display.show(f"ID: {t.id} | Type: {t.type} | Amount: {amount} | Time: {time_str}")
+
+    def _show_result(self, transaction: Transaction, account: Account, success: bool) -> None:
+        self.display.clear()
+        if transaction.info.type == "Balance":
+            self.display.show(f"Current Balance: {account.balance:.2f} EGP")
+        elif success:
+            self.display.show(f"{transaction.info.type} successful!\nNew Balance: {account.balance:.2f} EGP")
+        else:
+            self.display.show("Transaction failed: Insufficient funds or invalid input.")
+
+# Usage 👇 :
+if __name__ == "__main__":
+    bank = Bank("MyBank", "MYBK1234")
+    customer = Customer("John Doe", "123 Main St", "555-1234", "john@example.com")
+    account = Account("ACC123")
+    account.link_card(Card("CARD123", "1234"))
+    customer.add_account(account)
+    bank.add_customer(customer)
+    atm = ATMController(bank, "Main Branch", Display(), Input())
+    atm.run()
